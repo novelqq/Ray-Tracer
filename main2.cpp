@@ -21,6 +21,8 @@ GLfloat HEIGHT_INVERSE = 1 / GLfloat(HEIGHT);
 GLfloat fov = 30, aspectratio = WIDTH / GLfloat(HEIGHT); 
 GLfloat angle = tan(M_PI * 0.5 * fov / 180.); 
 
+vec3 background_color = vec3(0.0);
+vec3 ambient = vec3(0.2);
 //Ray is an object that consists of a start point origin and a vec3 direction
 class Ray{
     public:
@@ -29,6 +31,8 @@ class Ray{
         vec3 direction;
         vec3 origin;
 };
+
+
 
 //Material is an object that contains material properties needed by primitives
 class Material{
@@ -52,7 +56,7 @@ class Material{
 //Plane is an object representing a flat plane primitive ax + by + cz + d = 0 with a material
 class Plane{
     public:
-        Plane(GLfloat &a, GLfloat &b, GLfloat &c, GLfloat &d, Material &material):
+        Plane(const GLfloat &a, const GLfloat &b, const GLfloat &c, const GLfloat &d, const Material &material):
             a(a), b(b), c(c), d(d), material(material){}
         GLfloat a, b, c, d;
         Material material;
@@ -67,6 +71,7 @@ class Plane{
 //simple local point light sources with no falloff, consists of a vec3 center and a vec3 color intensity
 class Light{
     public:
+        Light(const vec3& center, const vec3& color): center(center), color(color){}
         vec3 center;
         vec3 color;
 };
@@ -81,115 +86,114 @@ class Sphere{
             const vec3 &c, 
             const GLfloat &r, 
             const Material &mat): 
-                center(c), radius(r), radius2(r * r), material(material){}
+                center(c), radius(r), radius2(r * r), material(mat){}
         
-        //calculate nearest ray sphere intersection
-        GLfloat intersect(const Ray& ray) const{
-            vec3 oc = center - ray.origin;
-            GLfloat k1 = ray.direction.dot(ray.direction);
-            GLfloat k2 = 2 * (oc.dot(ray.direction));
-            GLfloat k3 = oc.dot(oc) - radius2;
-            GLfloat discriminant = (k2*k2) - (4*k1*k3);
-            GLfloat t0 = (-k2 + sqrt(discriminant)) / (2*k1);
-            GLfloat t1 = (-k2 - sqrt(discriminant)) / (2*k1);
-            return std::min(t0, t1); 
+        GLfloat intersect(const Ray &ray) const{ 
+            GLfloat t0, t1;
+            vec3 l = center - ray.origin; 
+            GLfloat tca = l.dot(ray.direction); 
+            if (tca < 0){
+                return -1;
+            }
+            GLfloat d2 = l.dot(l) - tca * tca; 
+            if (d2 > radius2){
+                return -1;
+            } 
+            GLfloat thc = sqrt(radius2 - d2); 
+            t0 = tca - thc; 
+            t1 = tca + thc; 
+            if (t0 < 0){
+                t0 = t1;
+            }
+            return t0;
         } 
 }; 
 
+std::vector<Sphere> spheres;
+std::vector<Light> lights;
+std::vector<Plane> planes;
  
 GLfloat mix(const GLfloat &a, const GLfloat &b, const GLfloat &mix){ 
     return b * mix + a * (1 - mix); 
 } 
+vec3 compute_lighting(vec3 intersection, vec3 normal, vec3 v, Material material){
+    vec3 i = vec3(0);
+    vec3 j = vec3(0);
+    i += ambient;
+    j += ambient;
+    for(int k = 0; k < lights.size(); k++){
+        vec3 l = lights[k].center - intersection;
+        
+        GLfloat ndot = normal.dot(l);
+        if(ndot > 0){
+            i = i + (lights[k].color * ndot) / (normal.length()*l.length());
+        }
 
+        vec3 r = (normal * 2)*ndot - l;
+        GLfloat rdot = r.dot(v);
+        if(rdot > 0){
+            j = j + (lights[k].color * std::pow(rdot / r.length() * v.length(), material.q));
+        }
+
+
+    }
+    return i*material.kd + j*material.ki;
+
+}
 //trace takes a Ray ray and a int depth and returns a vec3 color intensity. If depth == 0, will return bg
 vec3 trace(const Ray& ray, const int &depth){
     GLfloat min_distance = INFINITY;
+    const Sphere* nearest_sphere = NULL; 
+    const Plane* nearest_plane = NULL;
+    for(int i = 0; i < spheres.size(); ++i){
+        GLfloat t = spheres[i].intersect(ray);
+        if(t > 0){
+            //std::cout << t << std::endl;
+        }
+        if(t > 0 && t < min_distance){
+            min_distance = t;
+            
+            nearest_sphere = &spheres[i];
+        }
+    }
+    for(int i = 0; i < planes.size(); ++i){
+        GLfloat t = planes[i].intersect(ray);
+        if(t > 0 && t < min_distance){
+            min_distance = t;
+            nearest_plane = &planes[i];
+            nearest_sphere = NULL;
+        }
+    }
+    if(nearest_sphere == NULL && nearest_plane == NULL){
+        return background_color;
+    }
+    if(nearest_sphere != NULL){
+        vec3 intersection = ray.origin + ray.direction*min_distance;
+        vec3 normal = intersection - nearest_sphere->center;
+        normal.normalize();
+        //vec3 ret = nearest_sphere->material.kd;
+        //std::cout << ret.x << " " << ret.y << " "<< ret.z << std::endl;
+        vec3 ret = compute_lighting(intersection, normal, -(ray.direction), nearest_sphere->material);
+        return ret;
+    }
+    if(nearest_plane != NULL){
+        vec3 intersection = ray.origin + ray.direction*min_distance;
+        vec3 normal = intersection - nearest_sphere->center;
+        normal.normalize();
+        // vec3 ret = compute_lighting(intersection, normal, -(ray.direction), nearest_plane->material);
+        // return ret;
+    }
     
 }
-// vec3 trace(const Ray& ray, const std::vector<Sphere> &spheres, const int &depth){ 
-//     //if (ray.direction.length() != 1) std::cerr << "Error " << ray.direction << std::endl;
-//     GLfloat tnear = INFINITY; 
-//     const Sphere* sphere = NULL; 
-//     // find intersection of this ray with the sphere in the scene
-//     for (unsigned i = 0; i < spheres.size(); ++i) { 
-//         GLfloat t0 = INFINITY, t1 = INFINITY; 
-//         if (spheres[i].intersect(ray, t0, t1)) { 
-//             if (t0 < 0) t0 = t1; 
-//             if (t0 < tnear) { 
-//                 tnear = t0; 
-//                 sphere = &spheres[i]; 
-//             } 
-//         } 
-//     } 
-//     // if there's no intersection return black or background color
-//     if (!sphere) return vec3(2); 
-//     vec3 surfaceColor = 0; // color of the ray/surfaceof the object intersected by the ray 
-//     vec3 phit = ray.origin + ray.direction * tnear; // point of intersection 
-//     vec3 nhit = phit - sphere->center; // normal at the intersection point 
-//     nhit.normalize(); // normalize normal direction 
-//     // If the normal and the view direction are not opposite to each other
-//     // reverse the normal direction. That also means we are inside the sphere so set
-//     // the inside bool to true. Finally reverse the sign of IdotN which we want
-//     // positive.
-//     GLfloat bias = 1e-4; // add some bias to the point from which we will be tracing 
-//     bool inside = false; 
-//     if (ray.direction.dot(nhit) > 0) nhit = -nhit, inside = true; 
-//     if ((sphere->material.kt > 0 || sphere->material.kr > 0) && depth < MAX_RAY_DEPTH) { 
-//         GLfloat facingratio = -ray.direction.dot(nhit); 
-//         // change the mix value to tweak the effect
-//         GLfloat fresneleffect = mix(pow(1 - facingratio, 3), 1, 0.1); 
-//         // compute reflection direction (not need to normalize because all vectors
-//         // are already normalized)
-//         vec3 refldir = ray.direction - nhit * 2 * ray.direction.dot(nhit); 
-//         refldir.normalize(); 
-//         vec3 reflection = trace(Ray(phit + nhit * bias, refldir), spheres, depth + 1); 
-//         vec3 refraction = 0; 
-//         // if the sphere is also transparent compute refraction ray (transmission)
-//         if (sphere->material.kt) { 
-//             GLfloat ior = 1.1, eta = (inside) ? ior : 1 / ior; // are we inside or outside the surface? 
-//             GLfloat cosi = -nhit.dot(ray.direction); 
-//             GLfloat k = 1 - eta * eta * (1 - cosi * cosi); 
-//             vec3 refrdir = ray.direction * eta + nhit * (eta *  cosi - sqrt(k)); 
-//             refrdir.normalize(); 
-//             refraction = trace(Ray(phit - nhit * bias, refrdir), spheres, depth + 1); 
-//         } 
-//         // the result is a mix of reflection and refraction (if the sphere is transparent)
-//         surfaceColor = ( 
-//             reflection * fresneleffect + 
-//             refraction * (1 - fresneleffect) * sphere->material.kt) * sphere->material.kd; 
-//     } 
-//     else { 
-//         // it's a diffuse object, no need to raytrace any further
-//         for (unsigned i = 0; i < spheres.size(); ++i) { 
-//             if (spheres[i].material.ks.x > 0) { 
-//                 // this is a light
-//                 vec3 transmission = 1; 
-//                 vec3 lightDirection = spheres[i].center - phit; 
-//                 lightDirection.normalize(); 
-//                 for (unsigned j = 0; j < spheres.size(); ++j) { 
-//                     if (i != j) { 
-//                         GLfloat t0, t1; 
-//                         if (spheres[j].intersect(Ray(phit + nhit * bias, lightDirection), t0, t1)) { 
-//                             transmission = 0; 
-//                             break; 
-//                         } 
-//                     } 
-//                 } 
-//                 surfaceColor = surfaceColor + sphere->material.kd * transmission * 
-//                 std::max(GLfloat(0), nhit.dot(lightDirection)) * spheres[i].material.ks; 
-//             } 
-//         } 
-//     } 
- 
-//     return surfaceColor + sphere->material.ks; 
-// } 
+
+
 //render computes the initial rays and calls trace to generate the color intensity for each pixel in vec3 image
 void render(){ 
     // Trace rays
     int k = WIDTH * HEIGHT;
     for (unsigned y = 0; y < HEIGHT; ++y) { 
         for (unsigned x = 0; x < WIDTH; ++x, --k) { 
-            GLfloat vx = (2 * ((x + 0.5) * WIDTH_INVERSE) - 1) * angle * aspectratio; 
+            GLfloat vx = (2 * ((x + 0.5) * WIDTH_INVERSE) - 1) * angle; 
             GLfloat vy = (1 - 2 * ((y + 0.5) * HEIGHT_INVERSE)) * angle; 
             vec3 v(vx, vy, -1); 
             v.normalize(); 
@@ -216,14 +220,16 @@ void render_scene(void){
 }
 
 //creates primitives needed for scene1
-void construct_scene_1(){
-    std::vector<Sphere> spheres; 
-    // position, radius, surface color, reflectivity, transparency, emission color
-    spheres.push_back(Sphere(vec3( 0.0, -10004, -20), 10000, Material(vec3(0.20, 0.20, 0.20), 0, 0.0))); 
-    spheres.push_back(Sphere(vec3( 0.0,      0, -20),     4, Material(vec3(1.00, 0.32, 0.36), 1, 0.5))); 
-    spheres.push_back(Sphere(vec3( 5.0,     -1, -15),     2, Material(vec3(0.90, 0.76, 0.46), 1, 0.0))); 
-    spheres.push_back(Sphere(vec3( 5.0,      0, -25),     3, Material(vec3(0.65, 0.77, 0.97), 1, 0.0))); 
-    spheres.push_back(Sphere(vec3(-5.5,      0, -15),     3, Material(vec3(0.90, 0.90, 0.90), 1, 0.0))); 
+void construct_scene_1(){ //                kd                                      ks                 q    r     t    i
+    Material aqua = Material(vec3(GLfloat(0.1), GLfloat(0.8), GLfloat(0.8)), vec3(0.9, 0.9, 0.9), 32, 0.5, 0.0, 1.5);
+    //                         position                radius material
+    spheres.push_back(Sphere(vec3(0.0,    0.0, -10.0), 1.5, aqua));
+    lights.push_back(Light(vec3(0.0, 30.0, -10.0), vec3(0.5, 0.5, 0.5)));
+    planes.push_back(Plane(0.0, 1.0, 0.0, 1.0, aqua));
+    vec3 ret = aqua.kd;
+    std::cout << ret.x << " " << ret.y << " "<< ret.z << std::endl;
+    vec3 ret1 = spheres[0].material.kd;
+    std::cout << ret1.x << " " << ret1.y << " "<< ret1.z << std::endl;
     // light
     //spheres.push_back(Sphere(vec3( 0.0,     20, -30),     3, Material(vec3(0.00, 0.00, 0.00), 0, 0.0, vec3(3)))); 
     render(); 

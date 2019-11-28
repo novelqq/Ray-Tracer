@@ -142,7 +142,7 @@ void render(const std::vector<Sphere> &spheres){
     int k = width * height;
     for (unsigned y = 0; y < height; ++y) { 
         for (unsigned x = 0; x < width; ++x, --k) { 
-            GLfloat xx = (2 * ((x + 0.5) * invWidth) - 1) * angle * aspectratio; 
+            GLfloat xx = (2 * ((x + 0.5) * invWidth) - 1) * angle; 
             GLfloat yy = (1 - 2 * ((y + 0.5) * invHeight)) * angle; 
             vec3 raydir(xx, yy, -1); 
             raydir.normalize(); 
@@ -166,13 +166,14 @@ void render_scene(void){
 void construct_scene_1(){
     std::vector<Sphere> spheres; 
     // position, radius, surface color, reflectivity, transparency, emission color
-    spheres.push_back(Sphere(vec3( 0.0, -10004, -20), 10000, vec3(0.20, 0.20, 0.20), 0, 0.0)); 
-    spheres.push_back(Sphere(vec3( 0.0,      0, -20),     4, vec3(1.00, 0.32, 0.36), 1, 0.0)); 
-    spheres.push_back(Sphere(vec3( 5.0,     -1, -15),     2, vec3(0.90, 0.76, 0.46), 1, 0.0)); 
-    spheres.push_back(Sphere(vec3( 5.0,      0, -25),     3, vec3(0.65, 0.77, 0.97), 1, 0.0)); 
-    spheres.push_back(Sphere(vec3(-5.5,      0, -15),     3, vec3(0.90, 0.90, 0.90), 1, 0.0)); 
+    // spheres.push_back(Sphere(vec3( 0.0, -10004, -20), 10000, vec3(0.20, 0.20, 0.20), 0, 0.0)); 
+    // spheres.push_back(Sphere(vec3( 0.0,      0, -20),     4, vec3(1.00, 0.32, 0.36), 1, 0.0)); 
+    // spheres.push_back(Sphere(vec3( 5.0,     -1, -15),     2, vec3(0.90, 0.76, 0.46), 1, 0.0)); 
+    // spheres.push_back(Sphere(vec3( 5.0,      0, -25),     3, vec3(0.65, 0.77, 0.97), 1, 0.0)); 
+    // spheres.push_back(Sphere(vec3(-5.5,      0, -15),     3, vec3(0.90, 0.90, 0.90), 1, 0.0));
+    spheres.push_back(Sphere(vec3(0.0,    0.0, -10.0),  1.25, vec3(0.1,    0.8, 0.8), 1, 0.0 )); 
     // light
-    //spheres.push_back(Sphere(vec3( 0.0,     20, -30),     3, vec3(0.00, 0.00, 0.00), 0, 0.0, vec3(3))); 
+    spheres.push_back(Sphere(vec3( 0.0,     20, -30),     3, vec3(0.00, 0.00, 0.00), 0, 0.0, vec3(3))); 
     render(spheres); 
 }
 int main(int argc, char **argv){ 

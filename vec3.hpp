@@ -46,6 +46,18 @@ class vec3{
             } 
             return *this; 
         } 
+        vec3 operator / ( const GLfloat s ) const {
+#ifdef DEBUG
+	if ( std::fabs(s) < DivideByZeroTolerance ) {
+	    std::cerr << "[" << __FILE__ << ":" << __LINE__ << "] "
+		      << "Division by zero" << std::endl;
+	    return vec3();
+	}
+#endif // DEBUG
+	    GLfloat r = GLfloat(1.0) / s;
+	    return *this * r;
+    }
+
     private:
         GLfloat square() const { 
             return x * x + y * y + z * z; 
