@@ -63,6 +63,7 @@ class Plane{
 
         GLfloat intersect(const Ray& ray){
             GLfloat t = (vec3(a, b, c).dot(ray.origin) + d) / (vec3(a, b, c).dot(ray.direction));
+            std::cout << t << std::endl;
             return t;  
         }
 
