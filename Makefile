@@ -1,2 +1,2 @@
 main: main.cpp
-	g++ main2.cpp -lGLU -lGL -lglut
+	g++ main.cpp -lGLU -lGL -lglut

@@ -22,7 +22,7 @@ GLfloat fov = 30, aspectratio = WIDTH / GLfloat(HEIGHT);
 GLfloat angle = tan(M_PI * 0.5 * fov / 180.); 
 
 //background color
-vec3 background_color = vec3(0.3);
+vec3 background_color = vec3(0.0);
 
 //ambient lighting color
 vec3 ambient = vec3(0.4);
@@ -33,7 +33,7 @@ std::vector<Light> lights;
 std::vector<Plane> planes;
 
 //finds the nearest colliding primitive, updates nearest_sphere and nearest_plane, and returns the distance to the nearest colliding primitive
-GLfloat get_intersect(const Ray& ray, const Sphere **nearest_sphere, const Plane **nearest_plane){
+GLfloat get_intersect(const Ray& ray, const Sphere **nearest_sphere, const Plane **nearest_plane, GLfloat tmin, GLfloat tmax){
     GLfloat min_distance = INFINITY;
     for(int i = 0; i < spheres.size(); ++i){
         GLfloat t = spheres[i].intersect(ray);
@@ -68,15 +68,15 @@ vec3 compute_lighting(vec3 intersection, vec3 normal, vec3 v, Material material)
         vec3 transmission = vec3(1);
         const Sphere *nearest_sphere = NULL; 
         const Plane *nearest_plane = NULL;
-        GLfloat min_distance = get_intersect(Ray(intersection + normal * bias, l.normalize()), &nearest_sphere, &nearest_plane);
-        if((nearest_sphere != NULL || nearest_plane != NULL)){
-            
-            continue;
+        GLfloat min_distance = get_intersect(Ray(intersection + normal * bias, l), &nearest_sphere, &nearest_plane, 0.001, INFINITY);
+        if(nearest_sphere != NULL || nearest_plane != NULL){
+            //return vec3(0);
         }
         GLfloat ndot = normal.dot(l);
         if(ndot > 0){
             i = i + (lights[k].color * ndot) / (normal.length()*l.length());
         }
+
         vec3 r = (normal * 2)*ndot - l;
         GLfloat rdot = r.dot(v);
         if(rdot > 0){
@@ -92,10 +92,10 @@ vec3 reflect_ray(const vec3 &direction, const vec3 &normal){
     return (normal*2)*normal.dot(direction) - direction;
 }
 //trace takes a Ray ray and a int depth and returns a vec3 color intensity. If depth == 0, will return bg
-vec3 trace(const Ray& ray, const int &depth){
+vec3 trace(const Ray& ray, const GLfloat t_min, const GLfloat t_max, const int &depth){
     const Sphere *nearest_sphere = NULL; 
     const Plane *nearest_plane = NULL;
-    GLfloat min_distance = get_intersect(ray, &nearest_sphere, &nearest_plane);
+    GLfloat min_distance = get_intersect(ray, &nearest_sphere, &nearest_plane, t_min, t_max);
     
     if(nearest_sphere == NULL && nearest_plane == NULL){
         return background_color;
@@ -104,56 +104,34 @@ vec3 trace(const Ray& ray, const int &depth){
         vec3 intersection = ray.origin + ray.direction*min_distance;
         vec3 normal = intersection - nearest_sphere->center;
         normal.normalize();
-        bool inside = false;
-        if(ray.direction.dot(normal) > 0){
-            normal = -normal;
-            inside = true;
-        }
+        //vec3 ret = nearest_sphere->material.kd;
+        //std::cout << ret.x << " " << ret.y << " "<< ret.z << std::endl;
         vec3 ret = compute_lighting(intersection, normal, -(ray.direction), nearest_sphere->material);
 
-        //return ret;
-        if(depth> 0 && nearest_sphere->material.kr > 0){
+        if(depth<=0 || nearest_sphere->material.kr < 0){
+            return ret;
+        }
+        else{
             vec3 refl = reflect_ray(-(ray.direction), normal);
             vec3 reflc = trace(Ray(intersection, refl), depth - 1); 
 
-            ret = ret*(1-nearest_sphere->material.kr) + reflc*(nearest_sphere->material.kr);
+            return ret*(1-nearest_sphere->material.kr) + reflc*(nearest_sphere->material.kr);
         }
-        if(depth > 0 && nearest_sphere->material.kt > 0){
-            GLfloat ior = 1.1;
-            GLfloat eta;
-            if(inside){
-                eta = ior;
-            }
-            else{
-                eta = 1/ior;
-            }
-            GLfloat cosi = -normal.dot(ray.direction);
-            GLfloat k = 1 - eta * eta * (1- cosi * cosi);
-            vec3 refr = ray.direction * eta + normal * (eta * cosi - sqrt(k));
-            vec3 refrc = trace(Ray(ray.origin - ray.direction, refr), depth - 1);
-            //return ret*(1-nearest_sphere->material.kt) + refrc*(nearest_sphere->material.kt);
-        }
-        else{
-            return ret;
-        }
-        return ret;
     }
     if(nearest_plane != NULL){
         vec3 intersection = ray.origin + ray.direction*min_distance;
         vec3 normal = vec3(nearest_plane->a, nearest_plane->b, nearest_plane->c);
-        normal.normalize();
+        //normal.normalize();
         vec3 ret = compute_lighting(intersection, normal, -(ray.direction), nearest_plane->material);
-        //std::cout << nearest_plane->material.kr << std::endl;
-        if(depth > 0 && nearest_plane->material.kr > 0){
-            vec3 refl = reflect_ray(-(ray.direction), normal);
-            vec3 reflc = trace(Ray(intersection, refl), depth - 1); 
-            return ret*(1-nearest_plane->material.kr) + reflc*(nearest_plane->material.kr);
-        }
-        if(depth > 0 && nearest_plane->material.kt > 0){
 
+        if(depth<=0 || nearest_plane->material.kr < 0){
+            return ret;
         }
         else{
-            return ret;
+            vec3 refl = reflect_ray(-(ray.direction), normal);
+            vec3 reflc = trace(Ray(intersection, refl), depth - 1); 
+
+            return ret*(1-nearest_plane->material.kr) + reflc*(nearest_plane->material.kr);
         }
     }
     
@@ -171,7 +149,7 @@ void render(){
             vec3 v(vx, vy, -1); 
             v.normalize(); 
 
-            image[k] = trace(Ray(vec3(0), v), MAX_RAY_DEPTH); 
+            image[k] = trace(Ray(vec3(0), v), MAX_RAY_DEPTH, 0.001, INFINITY); 
         } 
     } 
 } 
@@ -194,18 +172,15 @@ void render_scene(void){
 
 //creates primitives needed for scene1
 void construct_scene_1(){ //        kd              ks                 q    r     t    i
-    Material aqua = Material(vec3(0.1, 0.8, 0.8), vec3(0.9, 0.9, 0.9), 500, 0.3, 0.0, 1.5);
-    Material matte_black = Material(vec3(0.8, 0.8 , 0.8), vec3(0.9, 0.9, 0.9), 48.0, 0.1, 5, 1.5);
-    Material emerald_green = Material(vec3(1.0, 1, 1), (0.9, 0.9, 0.9), 32, 0.5, 0.0, 0.0);
+    Material aqua = Material(vec3(0.1, 0.8, 0.8), vec3(0.9, 0.9, 0.9), 32, 0.5, 0.0, 1.5);
+    Material matte_black = Material(vec3(0.8, 0.8 , 0.8), vec3(0.9, 0.9, 0.9), 48.0, 0.1, 0.0, 1.5);
     //                         position                radius material
     
-    spheres.push_back(Sphere(vec3(0.0,    -5001.5, -10.0), 5000, matte_black));
-    spheres.push_back(Sphere(vec3(0.0,    0.0, -10.0), 1.0, emerald_green));
-    spheres.push_back(Sphere(vec3(4.0,    3.5, -20.0), 3.67, aqua));
-    spheres.push_back(Sphere(vec3(-1.0,    -0.5, -8.0), 0.3, aqua));
+    spheres.push_back(Sphere(vec3(0.0,    -5001.5, -10.0), 5000, aqua));
+    spheres.push_back(Sphere(vec3(0.0,    0.0, -20.0), 1.5, matte_black));
     //planes.push_back(Plane(0.0, 1, 0.0, -5.0, aqua));
     
-    lights.push_back(Light(vec3(0.0, 10.0, -10.0), vec3(0.5, 0.5, 0.5)));
+    lights.push_back(Light(vec3(0.0, 4.0, -20.0), vec3(0.5, 0.5, 0.5)));
     //lights.push_back(Light(vec3(4.0, 4.0, -10.0), vec3(0.5, 0.5, 0.5)));
     // vec3 ret = aqua.kd;
     // std::cout << ret.x << " " << ret.y << " "<< ret.z << std::endl;
@@ -214,59 +189,9 @@ void construct_scene_1(){ //        kd              ks                 q    r   
     render(); 
 }
 
-void construct_scene_2(){
-    Material black = Material(vec3(0.1, 0.1, 0.1), vec3(0.9, 0.9, 0.9), 4, 0, 0.0, 0.0);
-    Material red = Material(vec3(1, 0, 0), vec3(0.9,0.9,0.9), 32, 0.0, 0.0, 0.0); 
-    Material green = Material(vec3(0, 1, 0), vec3(0.9,0.9,0.9), 64, 0.0, 0.0, 0.0); 
-    Material blue = Material(vec3(0, 0, 1), vec3(0.9,0.9,0.9), 128, 0.0, 0.0, 0.0); 
-    spheres.push_back(Sphere(vec3(0.0,    0.0, -10.0), 1.0, red));
-    spheres.push_back(Sphere(vec3(4.0,    3.5, -20.0), 3.67, green));
-    spheres.push_back(Sphere(vec3(-1.0,    -0.5, -8.0), 0.3, blue));
-    //planes.push_back(Plane(0.0, 1, 0.0, -5.0, black));
-    render();
-}
-
-void construct_scene_3(){
-
-}
-void construct_scene_4(){
-
-}
 //main function
 int main(int argc, char **argv){ 
-    if(argc != 2){
-        std::cout << "wrong arg input"  << std::endl;
-    }
-    #include <stdexcept>
-    #include <string>
-    int x;
-    std::string arg = argv[1];
-    try {
-    std::size_t pos;
-    x = std::stoi(arg, &pos);
-    if (pos < arg.size()) {
-        std::cerr << "Trailing characters after number: " << arg << '\n';
-    }
-    } catch (std::invalid_argument const &ex) {
-    std::cerr << "Invalid number: " << arg << '\n';
-    } catch (std::out_of_range const &ex) {
-    std::cerr << "Number out of range: " << arg << '\n';
-    } 
-    switch(x){
-        case 1:
-            construct_scene_1();
-            break;
-        case 2:
-            construct_scene_2();
-            break;
-        case 3:
-            construct_scene_3();
-            break;
-        case 4:
-            construct_scene_4();
-            break;
-        
-    }
+    construct_scene_1();
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
     glutInitWindowPosition(100, 500);
