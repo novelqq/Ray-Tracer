@@ -75,18 +75,19 @@ class Sphere{
         //calulates ray-sphere intersection, returns closest valid intersection point
         GLfloat intersect(const Ray &ray) const{ 
             GLfloat t0, t1;
-            vec3 l = center - ray.origin; 
-            GLfloat tca = l.dot(ray.direction); 
-            if (tca < 0){
+            vec3 oc = center - ray.origin; 
+            GLfloat k1 = oc.dot(ray.direction); 
+            GLfloat k2 = oc.dot(oc) - k1 * k1; 
+            if (k1 < 0){
                 return -1;
             }
-            GLfloat d2 = l.dot(l) - tca * tca; 
-            if (d2 > radius2){
+            
+            if (k2 > radius2){
                 return -1;
             } 
-            GLfloat thc = sqrt(radius2 - d2); 
-            t0 = tca - thc; 
-            t1 = tca + thc; 
+            GLfloat k3 = sqrt(radius2 - k2); 
+            t0 = k1 - k3; 
+            t1 = k1 + k3; 
             if (t0 < 0){
                 t0 = t1;
             }
