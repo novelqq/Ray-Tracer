@@ -1,2 +1,2 @@
-main: main.cpp
-	g++ main.cpp -lGLU -lGL -lglut
+rayT: main.cpp
+	g++ main.cpp -o rayT -lglut -lGLU -lGL -lstdc++

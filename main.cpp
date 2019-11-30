@@ -13,7 +13,7 @@ const int WIDTH = 400, HEIGHT = 400;
 vec3 *image = new vec3[WIDTH * HEIGHT];
 
 //ray recursion depth
-const int MAX_RAY_DEPTH = 5;
+const int MAX_RAY_DEPTH = 4;
 
 //some calculations needed for determining initial rays for each pixel
 GLfloat WIDTH_INVERSE = 1 / GLfloat(WIDTH);
@@ -22,10 +22,10 @@ GLfloat fov = 30, aspectratio = WIDTH / GLfloat(HEIGHT);
 GLfloat angle = tan(M_PI * 0.5 * fov / 180.); 
 
 //background color
-vec3 background_color = vec3(0.3);
+vec3 background_color = vec3(0.1, 0.3, 0.7);
 
 //ambient lighting color
-vec3 ambient = vec3(0.4);
+vec3 ambient = vec3(0.1);
 
 //global lists holding scene objects
 std::vector<Sphere> spheres;
@@ -65,7 +65,6 @@ vec3 compute_lighting(vec3 intersection, vec3 normal, vec3 v, Material material)
     //j += ambient;
     for(int k = 0; k < lights.size(); k++){
         vec3 l = lights[k].center - intersection;
-        vec3 transmission = vec3(1);
         const Sphere *nearest_sphere = NULL; 
         const Plane *nearest_plane = NULL;
         GLfloat min_distance = get_intersect(Ray(intersection + normal * bias, l.normalize()), &nearest_sphere, &nearest_plane);
@@ -85,7 +84,7 @@ vec3 compute_lighting(vec3 intersection, vec3 normal, vec3 v, Material material)
 
 
     }
-    return i*material.kd + j*material.ki;
+    return i*material.kd + j*material.ks;
 
 }
 vec3 reflect_ray(const vec3 &direction, const vec3 &normal){
@@ -118,20 +117,17 @@ vec3 trace(const Ray& ray, const int &depth){
 
             ret = ret*(1-nearest_sphere->material.kr) + reflc*(nearest_sphere->material.kr);
         }
+        //modified refraction referenced from: https://www.scratchapixel.com/code.php?id=3&origin=/lessons/3d-basic-rendering/introduction-to-ray-tracing
         if(depth > 0 && nearest_sphere->material.kt > 0){
-            GLfloat ior = 1.1;
-            GLfloat eta;
-            if(inside){
-                eta = ior;
-            }
-            else{
-                eta = 1/ior;
-            }
-            GLfloat cosi = -normal.dot(ray.direction);
-            GLfloat k = 1 - eta * eta * (1- cosi * cosi);
-            vec3 refr = ray.direction * eta + normal * (eta * cosi - sqrt(k));
-            vec3 refrc = trace(Ray(ray.origin - ray.direction, refr), depth - 1);
-            //return ret*(1-nearest_sphere->material.kt) + refrc*(nearest_sphere->material.kt);
+            GLfloat ior = nearest_sphere->material.ki; 
+            GLfloat ratio = 1 / ior; 
+            if(inside){ratio = ior;}
+            GLfloat cosi = -normal.dot(ray.direction); 
+            GLfloat k = 1 - ratio * ratio * (1 - cosi * cosi); 
+            vec3 refr = ray.direction * ratio + normal * (ratio *  cosi - sqrt(k)); 
+            refr.normalize(); 
+            vec3 refrc = trace(Ray(intersection - normal, refr), depth - 1); 
+            ret = ret*(1-nearest_sphere->material.kt) + refrc*(nearest_sphere->material.kt);
         }
         else{
             return ret;
@@ -192,17 +188,18 @@ void render_scene(void){
     glutSwapBuffers();
 }
 
-//creates primitives needed for scene1
-void construct_scene_1(){ //        kd              ks                 q    r     t    i
-    Material aqua = Material(vec3(0.1, 0.8, 0.8), vec3(0.9, 0.9, 0.9), 500, 0.3, 0.0, 1.5);
-    Material matte_black = Material(vec3(0.8, 0.8 , 0.8), vec3(0.9, 0.9, 0.9), 48.0, 0.1, 5, 1.5);
-    Material emerald_green = Material(vec3(1.0, 1, 1), (0.9, 0.9, 0.9), 32, 0.5, 0.0, 0.0);
+//creates primitives needed for scene 2
+void construct_scene_2(){ //        kd              ks                 q    r     t    i
+    Material aqua = Material(vec3(0.1, 0.3, 0.8), vec3(0.9, 0.9, 0.9), 32, 0.5, 0.0, 1.5);
+    Material shiny_black = Material(vec3(0.3, 0.3 , 0.3), vec3(0.9, 0.9, 0.9), 1.5 , 0.4, 0.0, 0.0);
+    Material emerald_green = Material(vec3(0.3, 0.8, 0.3), (0.9, 0.9, 0.9), 32, 0.5, 0.0, 0.0);
+    Material mirror = Material(vec3(0.9, 0.9, 0.9), (0.9, 0.9, 0.9), 32, 0.5, 0.0, 0.0);
     //                         position                radius material
     
-    spheres.push_back(Sphere(vec3(0.0,    -5001.5, -10.0), 5000, matte_black));
-    spheres.push_back(Sphere(vec3(0.0,    0.0, -10.0), 1.0, emerald_green));
-    spheres.push_back(Sphere(vec3(4.0,    3.5, -20.0), 3.67, aqua));
-    spheres.push_back(Sphere(vec3(-1.0,    -0.5, -8.0), 0.3, aqua));
+    spheres.push_back(Sphere(vec3(0.0,    -5001.5, -10.0), 5000, shiny_black));
+    spheres.push_back(Sphere(vec3(0.0,    0.0, -10.0), 1.0, mirror));
+    spheres.push_back(Sphere(vec3(4.0,    3.5, -20.0), 3.67, emerald_green));
+    spheres.push_back(Sphere(vec3(-1.0,    -1, -8.0), 0.3, aqua));
     //planes.push_back(Plane(0.0, 1, 0.0, -5.0, aqua));
     
     lights.push_back(Light(vec3(0.0, 10.0, -10.0), vec3(0.5, 0.5, 0.5)));
@@ -214,23 +211,52 @@ void construct_scene_1(){ //        kd              ks                 q    r   
     render(); 
 }
 
-void construct_scene_2(){
-    Material black = Material(vec3(0.1, 0.1, 0.1), vec3(0.9, 0.9, 0.9), 4, 0, 0.0, 0.0);
-    Material red = Material(vec3(1, 0, 0), vec3(0.9,0.9,0.9), 32, 0.0, 0.0, 0.0); 
-    Material green = Material(vec3(0, 1, 0), vec3(0.9,0.9,0.9), 64, 0.0, 0.0, 0.0); 
-    Material blue = Material(vec3(0, 0, 1), vec3(0.9,0.9,0.9), 128, 0.0, 0.0, 0.0); 
-    spheres.push_back(Sphere(vec3(0.0,    0.0, -10.0), 1.0, red));
-    spheres.push_back(Sphere(vec3(4.0,    3.5, -20.0), 3.67, green));
-    spheres.push_back(Sphere(vec3(-1.0,    -0.5, -8.0), 0.3, blue));
-    //planes.push_back(Plane(0.0, 1, 0.0, -5.0, black));
+//creates primitives needed for scene 1
+void construct_scene_3(){
+    Material black = Material(vec3(0.8, 0.8, 0.8), vec3(0.9, 0.9, 0.9), 4, 0.6, 0.0, 0.0);
+    Material red = Material(vec3(1, 0, 0), vec3(0.9,0.9,0.9), 16, 0.0, 0.4, 1.1); 
+    Material green = Material(vec3(0, 1, 0), vec3(0.9,0.9,0.9), 16, 0.0, 0.4, 1.1); 
+    Material clear = Material(vec3(0.8, 0.8, 0.8), vec3(0.9,0.9,0.9), 500, 0.5, 0.9, 1.35); 
+    lights.push_back(Light(vec3(0.0, 4.0, -5.0), vec3(1, 1,1)));
+    spheres.push_back(Sphere(vec3(2.0,    1.5, -15.0), 2.0, red));
+    spheres.push_back(Sphere(vec3(-2.0,    1.5, -15.0), 2.0, green));
+    spheres.push_back(Sphere(vec3(0.0,    -5001.5, -10.0), 5000, black));
+    //spheres.push_back(Sphere(vec3(-3.0,    0.0, -20.0), 1.5, green));
+    spheres.push_back(Sphere(vec3(0.5,    0.0, -8.0), 0.5, clear));
+    spheres.push_back(Sphere(vec3(-0.5,    0.0, -8.0), 0.5, clear));
+    planes.push_back(Plane(0.0, 1, 0.0, -5.0, black)); 
     render();
 }
 
-void construct_scene_3(){
-
-}
 void construct_scene_4(){
-
+    Material black = Material(vec3(0.8, 0.8, 0.8), vec3(0.9, 0.9, 0.9), 4, 0.6, 0.0, 0.0);
+    Material red = Material(vec3(1, 0, 0), vec3(0.9,0.9,0.9), 16, 0.5, 0.4, 1.1); 
+    Material green = Material(vec3(0, 1, 0), vec3(0.9,0.9,0.9), 16, 0.5, 0.4, 1.1); 
+    Material clear = Material(vec3(0.8, 0.8, 0.8), vec3(0.9,0.9,0.9), 500, 0.5, 0.9, 1); 
+    Material clear_water = Material(vec3(0.4, 0.4, 0.8), vec3(0.9,0.9,0.9), 500, 0.5, 0.9, 1.33); 
+    lights.push_back(Light(vec3(4.0, 7.0, -6.0), vec3(1, 1,1)));
+    //lights.push_back(Light(vec3(-5.0, 5.0, -10.0), vec3(1, 1,1)));
+    spheres.push_back(Sphere(vec3(2.0,    1.5, -15.0), 2.0, red));
+    spheres.push_back(Sphere(vec3(-2.0,    1.5, -15.0), 2.0, green));
+    spheres.push_back(Sphere(vec3(0.0,    -5001.5, -10.0), 5000, black));
+    //spheres.push_back(Sphere(vec3(-3.0,    0.0, -20.0), 1.5, green));
+    spheres.push_back(Sphere(vec3(-0.1,    0.1, -1.0), 0.1, clear_water));
+    spheres.push_back(Sphere(vec3(0.0,    0.0, -14.0), 1, black));
+    planes.push_back(Plane(0.0, 1, 0.0, -5.0, black)); 
+    render();
+}
+void construct_scene_1(){
+    Material black = Material(vec3(0.1, 0.1, 0.1), vec3(0.9, 0.9, 0.9), 4, 0, 0.0, 0.0);
+    Material red = Material(vec3(1, 0, 0), vec3(0.9,0.9,0.9), 16, 0.0, 0.0, 0.0); 
+    Material green = Material(vec3(0, 1, 0), vec3(0.9,0.9,0.9), 64, 0.0, 0.0, 0.0); 
+    Material blue = Material(vec3(0.1, 0.8, 0.9), vec3(0.9,0.9,0.9), 500, 0.0, 0.0, 0.0); 
+    lights.push_back(Light(vec3(1.0, 2.0, -5.0), vec3(1, 1,1)));
+    spheres.push_back(Sphere(vec3(0.0,    -0.5, -10.0), 1.0, red));
+    spheres.push_back(Sphere(vec3(0.0,    -5001.5, -10.0), 5000, black));
+    spheres.push_back(Sphere(vec3(-3.0,    0.0, -20.0), 1.5, green));
+    spheres.push_back(Sphere(vec3(0.5,    -0.3, -8.0), 0.3, blue));
+    planes.push_back(Plane(0.0, 1, 0.0, -5.0, black)); 
+    render();
 }
 //main function
 int main(int argc, char **argv){ 
